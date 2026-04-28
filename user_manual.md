@@ -75,7 +75,7 @@ v0.1 has no online paper resolver — paper / combined modes need PDFs you suppl
 
 The skill refuses to draft without these:
 
-1. **Universal style fields** — fill `skills/wechat-science-post/references/user-writing-style.md` (author name, contact channel, target audience, forbidden words). It's an INDEX file pointing to register-specific templates.
+1. **Universal style fields** — fill `skills/wechat-science-post/references/user-writing-style.md` (author name, target audience, forbidden words). It's an INDEX file pointing to register-specific templates.
 2. **Active register template** — fill the per-mode voice spec:
    - `references/user-writing-style-academic-paper.md` for paper / combined modes
    - `references/user-writing-style-repo-tutorial.md` for repo mode
@@ -85,16 +85,17 @@ The skill refuses to draft without these:
 
 - A Python env with `pymupdf`, `pyyaml`, `Pillow`, `markdown-it-py`, `premailer`, plus `git` on PATH. Create with `conda env create -f skills/wechat-science-post/environment.yml`, or merge into an existing env. Tell Claude the absolute `$PY` path at the first gate.
 
-### Pipeline (9 numbered steps + 4 setup gates)
+### Pipeline (9 numbered steps + 1 conditional sub-step + 4 setup gates)
 
 ```
 [0a-0d] env / mode / task-name / writing-style gates
-[1]     ingest          — git clone (repo) or pymupdf text extraction (paper)
+[1]     ingest           — git clone (repo) or pymupdf text extraction (paper)
 [2]     read-and-propose — Claude reads deeply, produces notes.md + questions
 [2.5]   cross-ref        — combined mode only: paper↔repo correspondence
 [3]     write            — Claude writes draft.md in one stretch
 [4]     revise           — targeted edits driven by your pointers
-[5]     figures_prep     — regularize user-supplied figure images
+[4.5]   figure_extract   — Vision-LLM auto-crops paper figures (paper / combined only)
+[5]     figures_prep     — regularize figure images for WeChat
 [6]     lint             — WeChat hard-limit checks
 [7]     render           — Markdown + theme CSS → inline-styled HTML
 [8]     preview          — local 375 px phone-width browser preview
@@ -103,12 +104,22 @@ The skill refuses to draft without these:
 
 ### Figures
 
-v0.1 does **not** auto-extract figures from PDFs. After `[4]`, screenshot what you need into:
+**Paper / combined modes**: `[4.5]` auto-extracts figures from the source PDF. For each `<!-- IMG:N -->` placeholder in the draft, Claude:
+1. Renders the source page at 300 DPI via `figure_extract.py page-image`
+2. Reads the rendered PNG (multimodal vision)
+3. Identifies the figure's bounding box visually
+4. Calls `figure_extract.py crop` to save `figures/fig-N/image.png`
+
+User override: place your own screenshot at `figures/fig-N/image.{png,jpg}` BEFORE `[4.5]` and the prompt skips that figure (yours wins). Cover image follows the same path.
+
+**Repo mode**: `[5a]` runs `notebook_outputs.py` on the spine notebook to extract `code-example-N-cell-M-K` images; cover is user-supplied.
+
+**Manual fallback paths** (if auto-extract is wrong or you prefer hand-curated):
 
 - `work/<task>_<ts>/figures/cover.{png,jpg}`
 - `work/<task>_<ts>/figures/fig-N/image.<ext>` for each paper figure
 - `work/<task>_<ts>/figures/formula-N/image.<ext>` for screenshot formulas
-- `work/<task>_<ts>/figures/code-example-N/cell-MMM-img-K.png` for repo notebook outputs
+- `work/<task>_<ts>/figures/code-example-N/cell-M-img-K.png` for repo notebook outputs
 
 Then run `[5] figures_prep` to regularize.
 

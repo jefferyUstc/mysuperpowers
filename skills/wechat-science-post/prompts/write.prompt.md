@@ -109,7 +109,7 @@ Article ends with a single one-line attribution, NOT a multi-section trust block
 原论文: *<English paper title>* (`<Journal>` `<Year>`). DOI: `<doi>`. 代码: `<repo url, if any>`.
 ```
 
-If `user-writing-style.md` has a strong contact-channel preference (email / WeChat), append `如有理解偏差请联系: <channel>` to the same line. Don't expand it.
+Bottom attribution is exactly the one line above; nothing more.
 
 ## Soft constraints (apply with judgment)
 

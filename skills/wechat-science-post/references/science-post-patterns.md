@@ -147,10 +147,6 @@ That is the entire CTA / attribution. **No `## 解读者` section, no
 sections of the article speak for themselves; readers who want to find
 the paper can use this one line.
 
-If the user's `user-writing-style.md` has a strong contact-channel
-preference, append `如有理解偏差请联系: <channel>` to this same line.
-Don't expand it into a paragraph.
-
 ## Numbers and claims discipline
 
 Three classes of numeric claim, decreasing strength:

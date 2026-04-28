@@ -30,7 +30,10 @@ except ImportError:
 
 # Hard limits (see references/wechat-gotchas.md)
 TITLE_MAX = 32
-AUTHOR_MAX = 8
+# WeChat docs say author <= 8 Chinese chars; ASCII-only authors fit more in
+# the same byte budget. We allow up to 16 ASCII / 8 Chinese chars worth.
+# If WeChat rejects on push, errcode 45004 will tell us.
+AUTHOR_MAX = 16
 DIGEST_MAX = 120
 DIGEST_WARN = 115
 

@@ -8,8 +8,7 @@ methodology and biology compressed into long, logically-scaffolded paragraphs.
 
 These are pulled from the universal section in `user-writing-style.md`.
 
-- Author name: `jeffliu`
-- Contact channel: `jeffliu.lucky@gmail.com`
+- Author name: `jefferyLLLLL`
 
 ## Positioning (one sentence)
 

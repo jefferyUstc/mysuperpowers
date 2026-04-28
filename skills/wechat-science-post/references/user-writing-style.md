@@ -32,17 +32,10 @@ authoritative voice anchor.
 
 ### Author name
 
-`jeffliu`
+`jefferyLLLLL`
 
 (Maximum 8 Chinese characters / WeChat metadata limit. The `author` frontmatter
 field in `draft.md` is populated from this value.)
-
-### Contact channel
-
-`jeffliu.lucky@gmail.com`
-
-Used in the bottom-line attribution if the active register's template asks for
-it (e.g., `如有理解偏差请联系: jeffliu.lucky@gmail.com`).
 
 ### Target audience (project-fixed; not user-configurable per-article)
 
@@ -81,7 +74,7 @@ framing). This field is therefore unused in the default registers, but kept
 here for users who want to fork a template that does include it.
 
 ```
-jeffliu,计算生物学方向,关注单细胞 / 多组学的方法学发展。
+jefferyLLLLL,计算生物学方向,关注单细胞 / 多组学的方法学发展。
 ```
 
 ### Term handling defaults

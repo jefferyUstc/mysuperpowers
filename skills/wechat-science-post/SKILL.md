@@ -63,7 +63,7 @@ Trigger phrases:
 5. **Numbers are quoted, not paraphrased.** Every numeric claim in the draft must trace to a specific sentence in caption / methods / results. Rephrased ranges are allowed; invented precision is not.
 6. **The skill does not claim authorship of the paper.** Articles are positioned as 解读 (interpretive exposition) with mandatory attribution to the paper, authors, journal, and code repo. Figure usage is flagged as potentially requiring permission (see `references/wechat-gotchas.md`).
 
-## Workflow (9 gated steps)
+## Workflow (9 numbered steps + 1 mode-conditional sub-step `[4.5]` for paper / combined figure auto-extract)
 
 All artifacts live under `work/<task_name>_<timestamp>/` so a failed run is `rm -rf`-able.
 
@@ -191,9 +191,9 @@ Lock the task name and timestamp into the session so every subsequent step write
 ### [0d] Confirm the writing-style register is selected and populated
 
 The skill ships a register system: `references/user-writing-style.md` is the
-index + universal fields (author name, contact channel, target audience,
-forbidden words); two register-specific templates carry the per-mode voice
-spec (`user-writing-style-academic-paper.md` for paper / combined modes,
+index + universal fields (author name, target audience, forbidden words);
+two register-specific templates carry the per-mode voice spec
+(`user-writing-style-academic-paper.md` for paper / combined modes,
 `user-writing-style-repo-tutorial.md` for repo mode).
 
 Gate checks:
@@ -355,6 +355,26 @@ Gate: user reviews `draft.md`. Issues → `[4] revise`. Clean → `[5] figures_p
 
 Claude reads `prompts/revise.prompt.md`. Revision is targeted: the user points to a specific paragraph / phrase / number; Claude edits only that and leaves the rest untouched. Pointer types include section name (`总览段`, `Figure 3 section`, `结论`), paragraph number, quoted phrase, line range, or image placeholder ID. After 5+ revisions on the same section, the prompt asks the user whether to rerun `[3] write` for that section instead of patching further.
 
+### [4.5] Figure extract (Claude, paper / combined modes only)
+
+Claude reads `prompts/figure-extract.prompt.md` and orchestrates a Vision-LLM-driven crop for every `<!-- IMG:N -->` placeholder where `N` is an integer (paper figures). For each:
+
+1. Render the source PDF page at 300 DPI via `scripts/figure_extract.py page-image` → PNG in `figures/_pages/`
+2. `Read` the rendered PNG (multimodal); identify the figure's bounding box visually
+3. `scripts/figure_extract.py crop` saves the bbox region to `figures/fig-N/image.png`
+
+The Vision LLM (Claude) provides the bbox; the script does deterministic IO (render + crop). Cropped images go through `[5] figures_prep` for WeChat sizing (≤ 1080 px wide).
+
+**Resolution**: 300 DPI gives a ~2481×3296 px page for a US-letter PDF; a figure occupying ~half the page crops to ~1240×1650 px, comfortably above the 1080 px WeChat target. `--dpi 400` available for very fine panel labels; below 200 DPI degrades both LLM-vision accuracy and final crop quality.
+
+**Skip in repo mode**: code-example outputs come from `[5a] notebook_outputs.py`.
+
+**User override**: if `figures/fig-N/image.<ext>` already exists, the prompt skips that figure and uses the user-supplied screenshot. Auto-extract is opt-out per figure.
+
+**Cover handling (all modes — paper / repo / combined)**: writes a creative English image-generation prompt to `figures/cover-prompt.txt` (Claude crafts it from `notes.md` central thesis) AND generates a 1280×545 px light-gray placeholder at `figures/cover.png` (via `figure_extract.py placeholder-cover`) so `[5]` / `[6]` pass without blocking. User pastes the prompt into their preferred image-gen tool (DALL-E / ChatGPT / MidJourney / 文心一格 / 通义万相 / Stable Diffusion / etc.) and replaces `cover.png`. The cover prompt is English-only; the generated image must contain no text (visual metaphor only). Skipped entirely if user pre-supplied `figures/cover.<ext>`.
+
+**Fallback to manual**: after 2 retries on the same figure, the prompt halts with a "manual screenshot needed" message; user places `figures/fig-N/image.<ext>` and re-runs `[5]`.
+
 ### [5] Figures prep (code)
 
 ```bash
@@ -507,6 +527,7 @@ All state lives under `work/<task_name>_<timestamp>/`. A failed run is cleared w
 - `SKILL.md` — this file; pipeline + gates + policy.
 - `scripts/ingest.py` — single dispatcher with three subcommands: `repo` (git clone + symlink), `paper` (validate N local PDFs, extract per-page text via `pymupdf` block-level + column-aware sort), `combined` (repo + N PDFs).
 - `scripts/notebook_outputs.py` — extract embedded image outputs from a `.ipynb` (pure stdlib JSON + base64); used by repo / combined modes for code-example sections.
+- `scripts/figure_extract.py` — render a PDF page as PNG at given DPI; crop a PNG by pixel bbox. Used by `[4.5]` figure-extract step (Vision-LLM-driven crop) in paper / combined modes.
 - `scripts/figures_prep.py` — image regularization for user-supplied figures.
 - `scripts/lint.py` — hard gates for WeChat compatibility.
 - `scripts/render.py` — Markdown + inline CSS → WeChat-compatible HTML.
@@ -516,6 +537,7 @@ All state lives under `work/<task_name>_<timestamp>/`. A failed run is cleared w
 - `prompts/cross-ref.prompt.md` — step `[2.5]` combined-mode paper↔repo correspondence + algorithm deep-dive.
 - `prompts/write.prompt.md` — step `[3]` write the full article in one stretch; produces `draft.md`.
 - `prompts/revise.prompt.md` — step `[4]` targeted edits to draft.md.
+- `prompts/figure-extract.prompt.md` — step `[4.5]` Vision-LLM-driven figure auto-extract for paper / combined modes; orchestrates `figure_extract.py` per draft figure placeholder.
 - `references/wechat-gotchas.md` — hard limits, error codes, IP whitelist, `mmbiz` URL caveat.
 - `references/science-post-patterns.md` — hook taxonomy, 总览 paragraph shape, CTA template, 解读者 identity anchor.
 - `references/user-writing-style.md` — index + universal fields (author, contact, target audience, forbidden words); points to the active register template per mode.
