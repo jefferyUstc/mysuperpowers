@@ -157,6 +157,24 @@ The article's **visual style** is independent from voice. Pick at `render.py` in
 - `work/<task>_<ts>/draft.md` — the article in Markdown (frontmatter + body + 1-line attribution)
 - `work/<task>_<ts>/output.html` — WeChat-compatible HTML fragment, ready to paste into the 公众号 编辑器
 
+### Manual edit & re-render
+
+`draft.md` is the source of truth; everything else (`output*.html`, `figures/manifest.json`) is rebuildable. Edit `draft.md` in any editor, then re-render:
+
+```bash
+# Lint first (catches title>32 / digest>120 / missing IMG entries / etc.)
+$PY skills/wechat-science-post/scripts/lint.py work/<task>_<ts>/draft.md
+
+# Re-render the active theme
+$PY skills/wechat-science-post/scripts/render.py \
+    work/<task>_<ts>/draft.md --theme default --wrap \
+    --out work/<task>_<ts>/output.html
+```
+
+When figures change as well (replaced cover, added new `<!-- IMG:N -->`, swapped a `fig-N/image.<ext>`), re-run `figures_prep.py` BEFORE `render.py`. Pure text edits skip that step.
+
+LLM-driven targeted edits remain available via `[4] revise`; the manual path above is for "I know exactly what to fix."
+
 ### Optional: live push to WeChat draft (`[9]`)
 
 The skill can create the draft for you via WeChat's API (still requires you to manually click 群发 in the web UI — never auto-publishes).
