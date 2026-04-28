@@ -1,0 +1,20 @@
+{
+  "name": "mysuperpowers",
+  "description": "Personal Claude Code skills marketplace",
+  "owner": {
+    "name": "nianping",
+    "email": "jeffliu.lucky@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "mysuperpowers",
+      "description": "Personal skills library for Claude Code",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "nianping",
+        "email": "jeffliu.lucky@gmail.com"
+      }
+    }
+  ]
+}

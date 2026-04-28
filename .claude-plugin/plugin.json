@@ -1,0 +1,10 @@
+{
+  "name": "mysuperpowers",
+  "description": "Personal skills library for Claude Code",
+  "version": "0.1.0",
+  "author": {
+    "name": "nianping",
+    "email": "jeffliu.lucky@gmail.com"
+  },
+  "license": "MIT"
+}

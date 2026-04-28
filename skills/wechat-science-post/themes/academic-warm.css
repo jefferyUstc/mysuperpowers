@@ -1,0 +1,192 @@
+/*
+ * academic-warm — sepia / cream paper palette.
+ *
+ * Solarized-light-leaning beige body bg, brown ink text, rust accent.
+ * Reads like an old book reprint. h2 cream-tinted, blockquote with
+ * warm border + subtle shadow.
+ *
+ * Constraints (same as default.css): no @media / ::before / :hover.
+ */
+
+body {
+  font-family: "Source Han Serif SC", "Noto Serif CJK SC",
+               "Songti SC", Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.9;
+  color: #4a3520;
+  background: #fdf6e3;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 14px 32px;
+  letter-spacing: 0.015em;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: #3a2814;
+  text-align: center;
+  margin: 30px 0 20px;
+  padding: 6px 16px 14px;
+  border-bottom: 2px solid #b85c38;
+  letter-spacing: 0.05em;
+}
+
+h2 {
+  font-size: 19px;
+  line-height: 1.5;
+  font-weight: 700;
+  color: #3a2814;
+  margin: 36px 0 14px;
+  padding: 6px 14px;
+  background: #f5e8c8;
+  border-left: 4px solid #b85c38;
+  border-radius: 0 4px 4px 0;
+}
+
+h3 {
+  font-size: 17px;
+  line-height: 1.55;
+  font-weight: 700;
+  color: #6a3a1f;
+  margin: 26px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed #d4a574;
+}
+
+h4, h5, h6 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #6a3a1f;
+  margin: 22px 0 8px;
+}
+
+p {
+  margin: 14px 0;
+  text-align: justify;
+  word-wrap: break-word;
+}
+
+strong {
+  color: #b85c38;
+  font-weight: 700;
+}
+
+em {
+  font-style: italic;
+  color: #6a3a1f;
+}
+
+a {
+  color: #b85c38;
+  text-decoration: none;
+  border-bottom: 1px solid #d4a574;
+  word-break: break-all;
+}
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 0.9em;
+  background: #f5e8c8;
+  color: #8b3a1a;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+pre {
+  background: #f8efd8;
+  border: 1px solid #e0c890;
+  border-radius: 5px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4a3520;
+  margin: 18px 0;
+}
+
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+blockquote {
+  margin: 20px 0;
+  padding: 10px 18px;
+  border-left: 4px solid #b85c38;
+  background: #f8efd8;
+  color: #6a4a2a;
+  font-style: italic;
+  border-radius: 0 6px 6px 0;
+  box-shadow: 0 2px 4px rgba(106, 74, 42, 0.08);
+}
+
+blockquote p {
+  margin: 6px 0;
+}
+
+ul, ol {
+  margin: 14px 0;
+  padding-left: 28px;
+}
+
+li {
+  margin: 6px 0;
+  line-height: 1.85;
+}
+
+li > p {
+  margin: 4px 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 22px auto;
+  border: 1px solid #d4a574;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(106, 74, 42, 0.12);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 18px 0;
+  font-size: 14px;
+  border: 1px solid #d4a574;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(106, 74, 42, 0.08);
+}
+
+th, td {
+  border: 1px solid #e0c890;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f0d896;
+  color: #3a2814;
+  font-weight: 700;
+}
+
+hr {
+  border: 0;
+  height: 1px;
+  margin: 32px 0;
+  background: linear-gradient(to right, transparent, #b85c38, transparent);
+}
+
+.attribution {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid #d4a574;
+  font-size: 14px;
+  color: #8a6a4a;
+}

@@ -1,0 +1,201 @@
+/*
+ * wechat-elegant — doocs/md "grace"-inspired refined style.
+ *
+ * Soft text-shadow on h1, rounded h2 with box-shadow, dashed-bottom h3,
+ * italic shadowed blockquote, rounded shadowed table. Teal accent
+ * (#0a8270) for a calmer, more grown-up vibe than wechat-bold.
+ *
+ * Constraints (same as default.css): no @media / ::before / :hover.
+ */
+
+body {
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.85;
+  color: #353535;
+  background: #ffffff;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 14px 32px;
+  letter-spacing: 0.04em;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-align: center;
+  margin: 32px 0 22px;
+  padding: 8px 18px;
+  border-bottom: 2px solid #0a8270;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #0a8270;
+  margin: 36px 0 16px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(10, 130, 112, 0.18);
+  text-align: center;
+  display: table;
+}
+
+h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 26px 8px 10px 0;
+  padding-left: 12px;
+  border-left: 4px solid #0a8270;
+  border-bottom: 1px dashed #0a8270;
+  padding-bottom: 4px;
+}
+
+h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0a8270;
+  margin: 22px 0 8px;
+}
+
+h5, h6 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0a8270;
+  margin: 20px 0 6px;
+}
+
+p {
+  margin: 16px 8px;
+  letter-spacing: 0.06em;
+  word-wrap: break-word;
+}
+
+strong {
+  color: #0a8270;
+  font-weight: 700;
+}
+
+em {
+  font-style: italic;
+  color: inherit;
+}
+
+a {
+  color: #0a8270;
+  text-decoration: none;
+  border-bottom: 1px solid #a8d4cb;
+  word-break: break-all;
+}
+
+code {
+  font-family: "Fira Code", "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: #f0f7f5;
+  color: #d14;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+pre {
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-family: "Fira Code", "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #353535;
+  margin: 18px 8px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05);
+}
+
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+}
+
+blockquote {
+  margin: 20px 8px;
+  padding: 14px 18px 14px 24px;
+  border-left: 4px solid #0a8270;
+  border-radius: 6px;
+  background: #f0f7f5;
+  color: #4a4a4a;
+  font-style: italic;
+  box-shadow: 0 4px 6px rgba(10, 130, 112, 0.08);
+}
+
+blockquote p {
+  margin: 4px 0;
+}
+
+ul, ol {
+  margin: 14px 0;
+  padding-left: 30px;
+}
+
+li {
+  margin: 6px 8px;
+  line-height: 1.85;
+}
+
+li > p {
+  margin: 4px 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 22px auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 18px 8px;
+  font-size: 14px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+th, td {
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #e6ebe9;
+}
+
+th {
+  background: #0a8270;
+  color: #ffffff;
+  font-weight: 700;
+  border-bottom: 1px solid #086d5e;
+}
+
+hr {
+  border: 0;
+  height: 1px;
+  margin: 32px 0;
+  background: linear-gradient(to right, transparent, rgba(10, 130, 112, 0.4), transparent);
+}
+
+.attribution {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid #d0e0db;
+  font-size: 14px;
+  color: #6a7a76;
+}

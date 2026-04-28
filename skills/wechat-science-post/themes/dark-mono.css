@@ -1,0 +1,198 @@
+/*
+ * dark-mono — terminal / coder dark theme.
+ *
+ * Slate background (#0d1117), light text (#e6edf3), cyan-green accent
+ * (#3fb950) like a hacker's console. Strong fits a tech / repo article.
+ *
+ * Note: WeChat OA renders in light mode by default. This theme is best
+ * for `render --wrap` browser previews and tech repo articles where
+ * the body bg actually displays. The element-level dark colors will
+ * still come through in WeChat but the overall page bg stays white,
+ * so the contrast may be jarring — preview before publishing.
+ *
+ * Constraints (same as default.css): no @media / ::before / :hover.
+ */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue",
+               Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.85;
+  color: #e6edf3;
+  background: #0d1117;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 14px 32px;
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  font-size: 24px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: #f0f6fc;
+  margin: 32px 0 18px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #3fb950;
+  letter-spacing: 0.04em;
+}
+
+h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: #f0f6fc;
+  background: #161b22;
+  margin: 36px 0 14px;
+  padding: 8px 16px;
+  border-left: 4px solid #3fb950;
+  border-radius: 0 4px 4px 0;
+}
+
+h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #58a6ff;
+  margin: 26px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #30363d;
+}
+
+h4, h5, h6 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #58a6ff;
+  margin: 22px 0 8px;
+}
+
+p {
+  margin: 14px 0;
+  text-align: justify;
+  color: #e6edf3;
+  word-wrap: break-word;
+}
+
+strong {
+  color: #3fb950;
+  font-weight: 700;
+}
+
+em {
+  font-style: italic;
+  color: #ffa657;
+}
+
+a {
+  color: #58a6ff;
+  text-decoration: none;
+  border-bottom: 1px solid #30363d;
+  word-break: break-all;
+}
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 0.9em;
+  background: #161b22;
+  color: #ff7b72;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #30363d;
+}
+
+pre {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #e6edf3;
+  margin: 18px 0;
+}
+
+pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+blockquote {
+  margin: 20px 0;
+  padding: 10px 18px;
+  border-left: 4px solid #3fb950;
+  background: #161b22;
+  color: #c9d1d9;
+  border-radius: 0 6px 6px 0;
+}
+
+blockquote p {
+  margin: 6px 0;
+  color: #c9d1d9;
+}
+
+ul, ol {
+  margin: 14px 0;
+  padding-left: 28px;
+  color: #e6edf3;
+}
+
+li {
+  margin: 6px 0;
+  line-height: 1.85;
+  color: #e6edf3;
+}
+
+li > p {
+  margin: 4px 0;
+  color: #e6edf3;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 22px auto;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 18px 0;
+  font-size: 14px;
+  background: #161b22;
+  color: #e6edf3;
+}
+
+th, td {
+  border: 1px solid #30363d;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  color: #e6edf3;
+}
+
+th {
+  background: #21262d;
+  color: #f0f6fc;
+  font-weight: 700;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid #30363d;
+  margin: 32px 0;
+}
+
+.attribution {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid #30363d;
+  font-size: 14px;
+  color: #8b949e;
+}
