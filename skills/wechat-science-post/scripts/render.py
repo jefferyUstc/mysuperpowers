@@ -209,7 +209,20 @@ def main() -> int:
             body_attrs=body_attrs,
         )
     else:
-        final = cleaned
+        # Fragment mode (paste-into-WeChat). premailer inlined the body-level
+        # CSS (max-width / margin auto / padding / base font / color / bg)
+        # onto the <body> tag, but the fragment drops <body>. Without a
+        # carrier element those styles are lost: a browser-direct-open of
+        # the fragment shows full-viewport width with no padding. Wrap the
+        # cleaned body content in a <section> that carries body_attrs so
+        # the styles survive in both contexts: browsers honour the inline
+        # max-width on a top-level <section>, and WeChat 编辑器 (plus
+        # 秀米 / 壹伴 typesetting tools) explicitly preserve <section>
+        # with inline style — it's the typesetters' canonical container.
+        if body_attrs.strip():
+            final = f"<section{body_attrs}>{cleaned}</section>"
+        else:
+            final = cleaned
 
     out_path = Path(args.out) if args.out else draft_dir / "output.html"
     # Contract: `--out` MUST be in the same directory as draft.md (i.e., the

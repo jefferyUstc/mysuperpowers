@@ -91,6 +91,7 @@ Section length is set by content density, not a per-section budget. Methods-deep
 - Format: `<!-- IMG:<id> -->` where `<id>` is `1`, `2`, ... for paper figures; `formula-N` for formula screenshots; `code-example-N-cell-M-K` for repo code-example outputs.
 - Place each `<!-- IMG -->` exactly where the figure appears in the narrative — typically after the section that introduces it, before the bridge to the next section.
 - Lint hard-fails on placeholders with no `figures/manifest.json` entry. The user is responsible for placing actual images into `figures/<id>/` before `[5] figures_prep`; you only emit the placeholder.
+- **Do NOT emit `<!-- IMG:cover -->` in body.** The cover image's role is the WeChat timeline thumbnail, uploaded by `push_draft.py` as `thumb_media_id` from the frontmatter `cover:` field; it is NOT a body figure. Including `<!-- IMG:cover -->` in body produces a duplicate display (timeline thumbnail + first inline image of the article). The frontmatter `cover:` field is the only place the cover is referenced — do not also put it in the body.
 
 ### Forbidden in body
 
