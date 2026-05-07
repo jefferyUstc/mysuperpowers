@@ -75,6 +75,7 @@ p {
   margin: 16px 8px;
   letter-spacing: 0.08em;
   word-wrap: break-word;
+  text-align: justify;
 }
 
 strong {
