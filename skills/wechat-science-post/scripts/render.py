@@ -161,7 +161,7 @@ STANDALONE_TEMPLATE = """<!DOCTYPE html>
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render draft.md to WeChat HTML")
     ap.add_argument("draft", help="path to draft.md")
-    ap.add_argument("--theme", default="default", help="theme name (themes/<name>.css)")
+    ap.add_argument("--theme", default="wechat-elegant", help="theme name (themes/<name>.css)")
     ap.add_argument("--out", help="output path (default: <draft_dir>/output.html)")
     ap.add_argument("--wrap", action="store_true", help="emit full HTML doc (default: body-only fragment)")
     args = ap.parse_args()

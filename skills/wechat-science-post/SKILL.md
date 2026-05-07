@@ -517,7 +517,7 @@ All state lives under `work/<task_name>_<timestamp>/`. A failed run is cleared w
 | Task name | (none — required at `[0c]`) | answer at `[0c]`; locks the work-dir path |
 | Audience (fixed) | academic researchers; every section must convey both the high-level scientific framing and the low-level methodology | not configurable; see `references/user-writing-style.md` |
 | Uncertainty threshold | **strict** — stop and ask on any unfamiliar term, symbol, or experimental detail | set `STRICTNESS=medium` env var (NOT recommended) |
-| Theme | `default.css` | `--theme <name>` on render.py |
+| Theme | `wechat-elegant.css` | `--theme <name>` on render.py |
 | Render output mode | body-only fragment (paste-ready) | `--wrap` for standalone HTML doc |
 | Draft push | skipped unless AppID/Secret are configured | configure per step `[9]`; `--dry-run` works without credentials |
 | Figure handling | user manually screenshots from the source PDF into `work/<task_name>_<ts>/figures/cover.*` and `work/<task_name>_<ts>/figures/fig-N/image.*`; `figures_prep.py` regularizes for WeChat | n/a — v0.1 does not auto-extract figures from PDFs (extraction quality was unusable) |
@@ -544,12 +544,12 @@ All state lives under `work/<task_name>_<timestamp>/`. A failed run is cleared w
 - `references/user-writing-style-academic-paper.md` — full register spec for paper / combined modes; modeled after dense-scientific-blog style (rich connectives, third-person, multi-clause syntax, inline `Author Year Journal` citations).
 - `references/user-writing-style-repo-tutorial.md` — full register spec for repo mode; modeled after hands-on-tutorial style **plus an algorithm-first discipline** (every code-example section opens with 200–400 chars of statistical / mathematical principle before the API call).
 - `themes/<name>.css` — 9 WeChat-compatible themes; pick at render time with `--theme <name>`. All are premailer-safe (no `@media`, `::before`, `:hover`).
-  - `default` — minimalist GitHub-blue accent on white; safe everyday choice.
+  - `default` — minimalist GitHub-blue accent on white; clean fallback.
   - `academic-serif` — classical CJK serif (Songti / 思源宋体), double-rule h1, deep-red 朱 accent.
   - `academic-warm` — sepia / cream paper palette, brown ink, rust accent; old-book reprint feel.
   - `academic-mono` — pure black/white/gray, no accent color; Nature-letter aesthetic.
   - `wechat-bold` — doocs/md "default"-inspired; centered h1 with bottom rule, filled-bg h2, vibrant blue.
-  - `wechat-elegant` — doocs/md "grace"-inspired; rounded shadowed h2, italic blockquote, teal accent.
+  - `wechat-elegant` — doocs/md "grace"-inspired; rounded shadowed h2, italic blockquote, teal accent. **Default when `--theme` is omitted.**
   - `paper-texture` — cream paper bg with SVG-noise grain (data URI), parchment-tag h2, warm sepia.
   - `graph-paper` — engineering-notebook bg with faint blue grid (repeating-linear-gradient), navy ink.
   - `dark-mono` — slate dark bg, light text, cyan-green accent; terminal/coder feel for repo articles. Note: WeChat OA renders pages light by default — preview before publishing.
