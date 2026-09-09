@@ -32,6 +32,16 @@ Co-write a WeChat Official Account (微信公众号) science-explanation article
 - "把 <arXiv id / DOI / PDF path> 写成一篇科研解读"
 - "根据 <repo url> 和 <paper> 写篇推文"
 
+### save-claude
+Route subagent work to Sonnet 5 or Opus 5 instead of letting it inherit the session's Fable-class model. Installs two pinned workers (`sonnet-worker` for scans, bounded edits, tests, extraction, progress checks; `opus-worker` for review, non-trivial refactors, coding), sets `CLAUDE_CODE_SUBAGENT_MODEL`, and adds a routing block to `~/.claude/CLAUDE.md`; backs up first; verifies with a real spawn.
+
+**Invoke automatically** when the session model (named in your system prompt) is Fable 5, Fable 5.1, or newer: once, before the first Agent spawn. If routing is installed the skill confirms it in one line; if the user uninstalled it, it stays quiet; otherwise it installs (backed up, reversible) and says so in one line. A user instruction that names a model for a task overrides the routing for that task.
+
+**Also invoke on:**
+- "save my Fable quota" / "stop children inheriting fable"
+- "subagents should use sonnet / opus" / "which model do my subagents run on"
+- "install / verify / uninstall save-claude" / "switch routing profile"
+
 ## How to invoke a skill
 
 In Claude Code:

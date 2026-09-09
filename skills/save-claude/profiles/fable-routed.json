@@ -1,0 +1,21 @@
+{
+  "name": "fable-routed",
+  "role": "routed",
+  "parent_model": "fable",
+  "default_subagent_model": "sonnet",
+  "workers": [
+    {
+      "name": "sonnet-worker",
+      "model": "sonnet",
+      "effort": "xhigh",
+      "takes": "repo scans and file inventories, edits limited to an explicit file list, running tests, extraction and summaries, checking processes or jobs and reporting progress and status"
+    },
+    {
+      "name": "opus-worker",
+      "model": "opus",
+      "effort": "xhigh",
+      "takes": "code review, non-trivial refactors, and coding that needs design judgment"
+    }
+  ],
+  "notes": "Default. Sonnet 5 does mechanical bounded work; Opus 5 does work that needs judgment; unnamed spawns default to sonnet."
+}

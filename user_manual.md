@@ -14,6 +14,7 @@ If a skill doesn't activate when you expected: try a more on-trigger phrase, or 
 |---|---|---|
 | [`python-pypi-release`](#python-pypi-release) | Releasing a Python package to PyPI | [SKILL.md](skills/python-pypi-release/SKILL.md) |
 | [`wechat-science-post`](#wechat-science-post) | Writing a 微信公众号 article from a repo / paper / both | [SKILL.md](skills/wechat-science-post/SKILL.md) |
+| [`save-claude`](#save-claude) | Making Claude Code subagents run on a cheaper model than the orchestrator | [SKILL.md](skills/save-claude/SKILL.md) |
 | [`using-mysuperpowers`](#using-mysuperpowers) | Internal — never invoked directly | [SKILL.md](skills/using-mysuperpowers/SKILL.md) |
 
 ---
@@ -216,6 +217,62 @@ For the full errcode table, see [skills/wechat-science-post/SKILL.md § [9]](ski
 
 ---
 
+## save-claude
+
+Stop burning Fable on subagent work Sonnet 5 or Opus 5 can do. Fable stays the orchestrator; every Agent-tool spawn runs on one of two pinned workers, and Fable picks the worker by task.
+
+Claude Code resolves a subagent's model as: spawn `model:` param → agent frontmatter `model:` → `CLAUDE_CODE_SUBAGENT_MODEL` → the main model. With nothing set, every scan and test run you delegate runs on Fable ($10 / $50 per MTok vs Sonnet 5's $2 / $10). The skill sets the middle two; it never changes the session's own model or effort.
+
+### When it runs
+
+- **Automatically**, once per session, whenever the session model is Fable 5, Fable 5.1, or newer. Routing installed → one line and on with your task. Not installed → it installs (three files in `~/.claude/`, backed up first) and tells you; takes effect from the next session. Uninstalled by you → it stays quiet.
+- **On request**: "save my Fable quota", "subagents should use sonnet / opus", "which model do my subagents run on", or `/save-claude [--dry-run | --verify | --uninstall | --force]`.
+- **Override**: name a model for a task ("review this with opus") and that instruction wins for that task.
+
+### Required setup
+
+Claude Code ≥ 2.1.242 (`/tasks` shows subagent models; ≥ 2.1.257 for `--force`), `jq` on PATH, write access to `~/.claude/`. No Python.
+
+### Workers
+
+| Worker | Model / effort | Takes |
+|---|---|---|
+| `sonnet-worker` | `sonnet` / `xhigh` | repo scans and file inventories, edits limited to an explicit file list, running tests, extraction and summaries, checking processes or jobs and reporting progress |
+| `opus-worker` | `opus` / `xhigh` | code review, non-trivial refactors, coding that needs design judgment |
+
+Unnamed spawns default to `sonnet`. The division of labor is the `workers[].takes` field in `skills/save-claude/profiles/fable-routed.json`; it is rendered into the `CLAUDE.md` block and each worker's description, so edit it there and re-run `/save-claude`.
+
+### First-time checklist
+
+1. Install the plugin, open a new `claude` on Fable. The skill installs the routing and says so.
+2. Open **another** new `claude` (the `env` block and `agents/` load at startup). Ask it to use `sonnet-worker` for a read-only repo inventory; check `/tasks` and `/usage` → *Usage by model*; then `/save-claude --verify` reads the session's `subagents/agent-*.jsonl` and fails if any child ran on the session's model.
+3. Optional: A/B routing off (`--uninstall`) vs on, same task — `skills/save-claude/references/method.md`.
+
+### Writes (and only these)
+
+- `~/.claude/settings.json`: `env.CLAUDE_CODE_SUBAGENT_MODEL` (+ `_FORCE` with `--force`). Everything else untouched.
+- `~/.claude/agents/sonnet-worker.md` and `opus-worker.md`: `model:` + `effort:` + the worker's `takes` as its description + a "you are a subagent" brief.
+- `~/.claude/CLAUDE.md`: one block between `<!-- save-claude:begin -->` / `<!-- save-claude:end -->` listing each worker and what it takes; text outside the markers is preserved.
+
+### Uninstall / rollback
+
+```bash
+skills/save-claude/scripts/install.sh --uninstall     # block + both workers + the two env keys; writes ~/.claude/save-claude.off
+cp ~/.claude/backups/save-claude-<stamp>.*/settings.json ~/.claude/settings.json   # full restore
+```
+
+`save-claude.off` is the one file uninstall leaves behind: it stops the next Fable session from auto-installing again. `/save-claude` removes it and re-enables routing; delete it by hand for a fully clean state (auto-install then resumes). Backups stay under `~/.claude/backups/save-claude-*`.
+
+The installed files live in `~/.claude/`, not in the plugin: `/plugin uninstall mysuperpowers` leaves them in place (routing keeps working without the plugin), and `/plugin update` does not refresh them. Run `--uninstall` before removing the plugin; re-run `/save-claude` after an update that changes `profiles/fable-routed.json`.
+
+### Caveats
+
+- `fork` always runs on the parent; `Explore` / `Plan` inherit it (`Explore` capped at Opus). The block routes scans to `sonnet-worker` by instruction; `--force` is the config-level override, but it also pins `opus-worker` to `sonnet`, so use it last.
+- Plan quota ≠ API spend: `/usage`'s dollar figure is an estimate; the per-model split is what shows routing worked.
+- Not "the cheapest setup": subagents can use more tokens in total and save money only when cheap tokens replace Fable tokens and quality holds. Measure.
+
+---
+
 ## using-mysuperpowers
 
 Internal index skill consulted by Claude at session start to know which skills are available and when to route to them. You do not invoke this directly. If you're curious what's loaded, ask: *"What mysuperpowers skills do you have?"*
@@ -230,6 +287,7 @@ Where each skill stores credentials / state on your machine:
 |---|---|---|
 | `python-pypi-release` | `~/.pypirc` (or `TWINE_USERNAME` / `TWINE_PASSWORD` env vars) | `dist/` in the project; tags in git |
 | `wechat-science-post` | `~/.config/wechat-science-post/config.yaml` (or `WECHAT_APPID` / `WECHAT_SECRET` env vars) | `~/.cache/wechat-science-post/token.json` (access_token, 7200 s TTL); `work/<task>_<ts>/.pushed` sentinel after a successful push |
+| `save-claude` | none | `~/.claude/settings.json` (`env.CLAUDE_CODE_SUBAGENT_MODEL*`), `~/.claude/agents/<worker>.md`, `~/.claude/CLAUDE.md` block; backups in `~/.claude/backups/save-claude-<stamp>.*/` |
 
 Per-task work directories (`work/<task>_<ts>/` for `wechat-science-post`) are listed in `.gitignore` — they're scratch space, safe to `rm -rf` after publishing.
 
@@ -246,3 +304,9 @@ IP not on whitelist. Run `curl ifconfig.me` to find your outbound IP, then add i
 
 **PyPI upload fails with `403 Forbidden`.**
 Token doesn't have upload scope for this project, or token is for a different account. Generate a project-scoped token in PyPI account settings; verify by running `preflight.py` again.
+
+**save-claude verified OK but `/usage` still shows only `claude-fable-5-1`.**
+Either the session predates the install (the `env` block loads at startup — open a new `claude`, `/clear` is not enough), or the spawn was a `fork` / `Explore` (both inherit the parent). Ask explicitly for the `sonnet-worker` subagent, then `scripts/verify.sh --transcript`. If a child still runs on Fable, reinstall with `--force`.
+
+**save-claude `verify.sh` warns about a shell export.**
+`CLAUDE_CODE_SUBAGENT_MODEL` or `CLAUDE_CODE_EFFORT_LEVEL` exported in your shell overrides the settings file (and, for effort, the worker's `effort:`). Unset it or make it agree with the profile.
