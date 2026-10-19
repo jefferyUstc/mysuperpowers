@@ -1,48 +1,7 @@
-# Few-shot anchor articles
+# Voice anchors
 
-Place 1–3 of your past published WeChat articles here as
-`published-article-01.md`, `published-article-02.md`,
-`published-article-03.md`.
+Every `*.md` here other than this README is a past article the writing step reads for rhythm, connective density, and term handling. One anchor is read per article, so a few good ones beat many.
 
-These files are read by the `scan` / `plan` / `figure` / `draft` /
-`revise` prompts as voice anchors. Without at least one anchor, the
-skill's output will drift toward a generic science-writing voice on the
-first run.
+- `scprime-seq.md`, `droplet-mt.md` — paper-mode articles written with this skill and revised after the user's review (2026-10-19). Replace them with the published versions once they go out, if those differ.
 
-## Format
-
-Plain Markdown. Keep the article as you published it — do NOT rewrite
-for the skill's consumption. The prompts care about voice, rhythm,
-term-handling, and connective density, all of which are visible in raw
-published form.
-
-Include at the top:
-
-```markdown
----
-title: "..."
-published_at: "YYYY-MM-DD"
-wechat_url: "..."
-paper_reference: "DOI or arXiv id, if this was a paper walkthrough"
----
-
-<body>
-```
-
-## Selection guidance
-
-Pick articles where:
-
-- You were satisfied with the voice
-- The topic overlaps with what you usually write about
-- The length is close to your typical target
-
-Avoid articles that were heavily edited by an external editor, were
-first drafts, or were off-topic experiments — those would anchor the
-voice in a direction you do not want to repeat.
-
-## Do not place anything else in this directory
-
-The skill enumerates `examples/published-article-*.md` as few-shot
-input. Placeholder files, notes, or other artifacts will confuse the
-enumeration.
+Keep anchors as published: frontmatter plus body, no edits for the skill's sake. Choose articles whose voice you were satisfied with and that sit in your usual topic and length. Do not put drafts you disliked, notes, or other files here.

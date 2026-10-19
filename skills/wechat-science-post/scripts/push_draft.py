@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Push a rendered article to the WeChat Official Account draft box.
 
-Step [11] of the pipeline (optional). Requires:
+Optional last step: run render.py first (it writes output.html and
+figures/manifest.json, which this script uploads). Requires:
 
   - WECHAT_APPID and WECHAT_SECRET in environment, OR
   - ~/.config/wechat-science-post/config.yaml with chmod 600:
@@ -19,12 +20,10 @@ Inputs (in order of precedence for each field):
   - the work dir:  work/<task_name>_<ts>/
       ├── draft.md         (frontmatter: title, author, digest, cover,
       │                     paper_doi, repo_url)
-      ├── output.html      (rendered body-only fragment from render.py)
+      ├── output.html      (fragment from render.py)
       └── figures/
-          ├── manifest.json
-          └── prepared/
-              ├── cover.jpg
-              └── fig-1.jpg ... fig-N.{jpg,png}
+          ├── manifest.json    (from render.py)
+          └── prepared/        (cover.jpg, fig-N.jpg, ...)
 
 Behavior:
 
@@ -68,21 +67,16 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    print("[error] pyyaml not installed; pip install pyyaml", file=sys.stderr)
-    sys.exit(2)
+import yaml
+
+from common import AUTHOR_MAX_UNITS, DIGEST_MAX, TITLE_MAX, VERSION, author_units
+from common import parse_frontmatter as _parse_frontmatter
 
 WECHAT_BASE = "https://api.weixin.qq.com"
 TOKEN_CACHE_DEFAULT = Path.home() / ".cache" / "wechat-science-post" / "token.json"
 CONFIG_DEFAULT = Path.home() / ".config" / "wechat-science-post" / "config.yaml"
 
-# Single-source version: read from the plugin manifest at the repo root.
-_SKILL_DIR = Path(__file__).resolve().parent.parent
-_PLUGIN_JSON = _SKILL_DIR.parent.parent / ".claude-plugin" / "plugin.json"
-SKILL_VERSION = json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
-USER_AGENT = f"wechat-science-post-push/{SKILL_VERSION}"
+USER_AGENT = f"wechat-science-post-push/{VERSION}"
 
 # WeChat errors that matter for diagnostic quality
 ERRCODE_HINTS = {
@@ -307,16 +301,10 @@ def rewrite_img_src(html: str, mapping: dict[str, str]) -> tuple[str, int]:
 
 
 def parse_frontmatter(text: str) -> tuple[dict, str]:
-    if not text.startswith("---\n"):
-        return {}, text
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return {}, text
     try:
-        fm = yaml.safe_load(text[4:end]) or {}
-    except yaml.YAMLError:
-        fm = {}
-    return (fm if isinstance(fm, dict) else {}), text[end + 5:]
+        return _parse_frontmatter(text)
+    except ValueError as e:
+        raise SystemExit(f"[error] draft.md: {e}")
 
 
 def build_source_url(fm: dict, explicit: str | None) -> str:
@@ -359,11 +347,8 @@ def push(
 
     if not title or not author or not digest:
         raise SystemExit("[error] draft.md frontmatter missing one of: title / author / digest")
-    if len(title) > 32 or len(author) > 8 or len(digest) > 120:
-        raise SystemExit(
-            f"[error] frontmatter exceeds WeChat limits — run lint.py first.\n"
-            f"  title: {len(title)}/32\n  author: {len(author)}/8\n  digest: {len(digest)}/120"
-        )
+    if len(title) > TITLE_MAX or author_units(author) > AUTHOR_MAX_UNITS or len(digest) > DIGEST_MAX:
+        raise SystemExit("[error] frontmatter exceeds WeChat limits — run lint.py first")
 
     # 2. Manifest
     manifest_path = work_dir / "figures" / "manifest.json"
@@ -386,7 +371,7 @@ def push(
         raise SystemExit(
             "[error] no cover image found.\n"
             "  expected manifest['cover'] or frontmatter 'cover: path/to/cover.{jpg,png}'.\n"
-            "  run figures_prep.py first."
+            "  run render.py first."
         )
 
     # 4. Identify body images referenced in output.html (local paths)
@@ -401,7 +386,7 @@ def push(
     print("=" * 60)
     print(f"  work dir:   {work_dir}")
     print(f"  title:      {_short(title, 60)}  ({len(title)}/32)")
-    print(f"  author:     {author}  ({len(author)}/8)")
+    print(f"  author:     {author}")
     print(f"  digest:     {_short(digest, 70)}  ({len(digest)}/120)")
     print(f"  cover src:  {cover_source.relative_to(work_dir)}")
     print(f"  body imgs:  {len(body_images)}")

@@ -9,7 +9,7 @@ Inspired by [obra/superpowers](https://github.com/obra/superpowers), scoped down
 | Skill | One-line | Spec |
 |---|---|---|
 | `python-pypi-release` | Take a Python package from working tree to PyPI in 13 gated steps. | [SKILL.md](skills/python-pypi-release/SKILL.md) |
-| `wechat-science-post` | Co-write a 微信公众号 science article from a paper / repo / both. 9 steps + 4 gates. | [SKILL.md](skills/wechat-science-post/SKILL.md) |
+| `wechat-science-post` | Co-write a 微信公众号 science article from a paper / repo / both. 7 steps, 2 review points. | [SKILL.md](skills/wechat-science-post/SKILL.md) |
 | `save-claude` | Route subagents to Sonnet 5 / Opus 5 instead of inheriting Fable 5.1. Install, verify with a real spawn, uninstall. | [SKILL.md](skills/save-claude/SKILL.md) |
 | `using-mysuperpowers` | Internal index — Claude consults this at session start to know which skills are available. | [SKILL.md](skills/using-mysuperpowers/SKILL.md) |
 

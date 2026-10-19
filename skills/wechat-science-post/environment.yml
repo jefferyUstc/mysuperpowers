@@ -1,32 +1,17 @@
-# Conda environment spec for the wechat-science-post skill.
-#
-# Two ways to use it (choose at [0a]):
-#   1. let the agent create a fresh env for this skill:
-#        conda env create -f environment.yml
-#   2. update an env you already have:
-#        conda env update -f environment.yml -n <your-env-name>
-#
-# Skill scripts need at runtime:
-#   pymupdf, pyyaml, Pillow, markdown-it-py, premailer + `git` on PATH.
+# conda env create -f environment.yml
+# Scripts need pymupdf, pyyaml, Pillow, markdown-it-py, premailer, and git (repo modes).
+# If `import pymupdf` fails with GLIBCXX_3.4.32 on an older Linux, run
+# `conda install -c conda-forge "libstdcxx-ng>=14"` in the env, or pin pymupdf<1.24.
 name: wechat-science-post
 channels:
   - conda-forge
 dependencies:
-  - python>=3.10
+  - python=3.12
   - git
   - pyyaml>=6.0
   - pillow>=10.0
   - pip
   - pip:
-      - pymupdf>=1.23
+      - pymupdf>=1.24
       - markdown-it-py>=3.0
       - premailer>=3.10
-
-# Notes:
-# - `pymupdf` is in the pip block (not conda) because conda-forge's pymupdf
-#   sometimes lags the upstream wheel by several minor versions.
-# - On older conda installs whose libstdcxx-ng is < 14, the latest pymupdf
-#   wheel may fail to import with `GLIBCXX_3.4.32 not found`. Two fixes:
-#     A) `conda install -c conda-forge "libstdcxx-ng>=14"`  (recommended)
-#     B) pin pymupdf to an older wheel:
-#        `$PY -m pip install 'pymupdf<1.24'`  (kept in v0.1 ROADMAP as a known caveat)

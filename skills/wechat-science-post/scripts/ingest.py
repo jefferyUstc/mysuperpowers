@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Ingest for wechat-science-post (v0.1).
+"""Ingest source material into work/<slug>/ingest/.
 
-Subcommands:
-  repo      git clone a GitHub repo into local cache; symlink into ingest tree
-  paper     organize one or more local PDFs; per-page text via pypdf
-  combined  repo + N papers in one tree
+    ingest.py paper  <pdf> [<pdf> ...]            --work work/<slug>
+    ingest.py repo   <owner/name | github URL>    --work work/<slug>
+    ingest.py combined --repo <owner/name> --paper <pdf> [--paper <pdf>] --work work/<slug>
 
-Design principle: scripts only do deterministic IO + organize. All semantic
-judgment (which sections, which figure means what, how to summarize) happens
-in prompts under prompts/, with Claude reading the ingest tree directly via
-Read / Glob / Grep.
+Several PDFs in one call form ONE article: the first is the primary paper,
+the rest are supplements. For one article per paper, run ingest once per
+paper with its own work dir. A PDF may carry an explicit id: `supp:./si.pdf`.
+
+Writes ingest/manifest.json — the single place the article mode is decided —
+plus cleaned per-page text (ingest/text/<id>/page-NNN.txt) and, for papers, a
+figure index (caption page + large embedded images per page) that
+figures.py uses to extract figures without cropping.
+
+Scripts only do deterministic IO. Reading, judging, and writing are Claude's.
 """
 from __future__ import annotations
 
@@ -23,484 +28,306 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections import Counter
 from pathlib import Path
 
+from common import VERSION
+
+CACHE_DIR = Path.home() / ".cache" / "wechat-science-post"
 GITHUB_API = "https://api.github.com"
+USER_AGENT = f"wechat-science-post/{VERSION}"
 
-# Single-source version: read from the plugin manifest at the repo root.
-# Plugin version is the only version — skills don't version independently.
-_SKILL_DIR = Path(__file__).resolve().parent.parent
-_PLUGIN_JSON = _SKILL_DIR.parent.parent / ".claude-plugin" / "plugin.json"
-SKILL_VERSION = json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
-USER_AGENT = f"wechat-science-post-ingest/{SKILL_VERSION}"
-CACHE_DIR_DEFAULT = Path.home() / ".cache" / "wechat-science-post"
-# INGEST_VERSION is the manifest field name for the ingest schema version.
-# It tracks SKILL_VERSION 1:1 today; split them only if the manifest schema
-# diverges from the plugin release cadence.
-INGEST_VERSION = SKILL_VERSION
-
-QUESTIONS_HEADER = (
-    "# Open questions for the user\n\n"
-    "(Scan / figure / draft prompts append questions here. "
-    "Answer each question inline, or mark `N/A — proceed without`, "
-    "before moving to the next step.)\n"
-)
+CAPTION_RE = re.compile(r"^\s*(?:Fig\.?|Figure)\s*(\d{1,2})\s*[|.:]\s*\S", re.MULTILINE)
+DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s\"<>;,]+")
+MIN_FIGURE_W, MIN_FIGURE_H = 400, 300   # embedded images smaller than this are not figures
 
 
 # =============================================================================
-# Shared utilities
+# Paper text
 # =============================================================================
 
 
-def gh_get(path: str, token: str | None = None) -> dict:
-    url = f"{GITHUB_API}{path}"
+def page_text(page) -> tuple[str, str]:
+    """Reading-order text of one page. Returns (text, layout).
+
+    Single-column pages keep pymupdf's top-to-bottom block order. Two-column
+    pages are emitted segment by segment: full-width blocks (titles, wide
+    figures, section breaks) cut the page into segments, and each segment is
+    read left column then right column. Every text block is emitted exactly
+    once, so nothing is dropped.
+    """
+    blocks = [b for b in page.get_text("blocks") if b[6] == 0 and b[4].strip()]
+    if not blocks:
+        return "", "empty"
+    width = page.rect.width
+    mid, tol = width / 2, width * 0.04
+    left, right, wide = [], [], []
+    for b in blocks:
+        x0, x1 = b[0], b[2]
+        if x1 <= mid + tol:
+            left.append(b)
+        elif x0 >= mid - tol:
+            right.append(b)
+        else:
+            wide.append(b)
+    chars = lambda bs: sum(len(b[4].strip()) for b in bs)  # noqa: E731
+    total = chars(blocks)
+    two_col = chars(left) >= 0.2 * total and chars(right) >= 0.2 * total
+
+    if not two_col:
+        ordered = sorted(blocks, key=lambda b: (round(b[1]), b[0]))
+        return "\n".join(b[4].strip() for b in ordered), "single"
+
+    wide.sort(key=lambda b: b[1])
+    cuts = [b[1] for b in wide]
+    seg = lambda b: sum(1 for c in cuts if c <= b[1])  # noqa: E731
+    out = []
+    for k in range(len(wide) + 1):
+        for col in (left, right):
+            out += sorted((b for b in col if seg(b) == k), key=lambda b: b[1])
+        if k < len(wide):
+            out.append(wide[k])
+    return "\n".join(b[4].strip() for b in out), "two-column"
+
+
+def _norm(line: str) -> str:
+    return re.sub(r"\d+", "#", re.sub(r"\s+", " ", line.strip()))
+
+
+NUM_ONLY = re.compile(r"^\s*\d{1,4}\s*$")
+
+
+def _is_line_numbering(values: list[int]) -> bool:
+    """Manuscript line numbers: many number-only lines forming a rising sequence."""
+    if len(values) < 12:
+        return False
+    rising = sum(1 for a, b in zip(values, values[1:]) if 0 < b - a <= 3)
+    return rising >= 0.8 * (len(values) - 1)
+
+
+def clean_pages(pages: list[str]) -> tuple[list[str], dict]:
+    """Drop running headers/footers (text lines repeated on most pages) and
+    manuscript line numbers. Other number-only lines (table cells, page
+    numbers) are kept."""
+    n = len(pages)
+    stats = {"boilerplate_lines": 0, "line_number_pages": 0}
+    repeated: set[str] = set()
+    if n >= 4:
+        counts = Counter()
+        for p in pages:
+            counts.update({_norm(l) for l in p.splitlines()
+                           if l.strip() and not NUM_ONLY.match(l)})
+        threshold = max(3, n * 0.5)
+        repeated = {k for k, c in counts.items() if c >= threshold and len(k) < 200}
+
+    cleaned = []
+    for p in pages:
+        lines = p.splitlines()
+        kept = [l for l in lines if not (l.strip() and _norm(l) in repeated)]
+        stats["boilerplate_lines"] += len(lines) - len(kept)
+        if _is_line_numbering([int(l) for l in kept if NUM_ONLY.match(l)]):
+            kept = [l for l in kept if not NUM_ONLY.match(l)]
+            stats["line_number_pages"] += 1
+        cleaned.append(re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip() + "\n")
+    return cleaned, stats
+
+
+def detect_venue(raw_first_pages: str) -> str:
+    for name in ("bioRxiv", "medRxiv", "arXiv", "Research Square", "SSRN"):
+        if name.lower() in raw_first_pages.lower():
+            return name
+    return ""
+
+
+def extract_paper(src: Path, paper_id: str, ingest_dir: Path) -> dict:
+    import pymupdf
+
+    pdf_dest = ingest_dir / f"{paper_id}.pdf"
+    shutil.copy(src, pdf_dest)
+    text_dir = ingest_dir / "text" / paper_id
+    text_dir.mkdir(parents=True, exist_ok=True)
+
+    doc = pymupdf.open(pdf_dest)
+    raw_pages, layouts, warnings = [], Counter(), []
+    large_images: dict[str, list] = {}
+    captions: dict[str, int] = {}
+    for i, page in enumerate(doc):
+        text, layout = page_text(page)
+        plain = page.get_text("text")
+        if len(text.strip()) < 0.9 * len(plain.strip()):  # guard: never lose text
+            warnings.append(f"page {i + 1}: block extraction short; used plain text")
+            text, layout = plain, "fallback"
+        raw_pages.append(text)
+        layouts[layout] += 1
+        for m in CAPTION_RE.finditer(text):
+            captions.setdefault(m.group(1), i + 1)
+        imgs = [
+            [x[0], x[2], x[3]]  # xref, width, height
+            for x in page.get_images(full=True)
+            if x[2] >= MIN_FIGURE_W and x[3] >= MIN_FIGURE_H
+        ]
+        if imgs:
+            large_images[str(i + 1)] = imgs
+
+    first = "\n".join(raw_pages[:2])
+    meta = {k: v.strip() for k, v in (doc.metadata or {}).items() if v and v.strip()}
+    doi_m = DOI_RE.search(meta.get("subject", "") + "\n" + first)
+    doi = doi_m.group(0).rstrip(".)]") if doi_m else ""
+    page_count = doc.page_count
+    doc.close()
+
+    pages, stats = clean_pages(raw_pages)
+    for i, t in enumerate(pages):
+        (text_dir / f"page-{i + 1:03d}.txt").write_text(t, encoding="utf-8")
+
+    figures = {
+        n: {"caption_page": p}
+        for n, p in sorted(captions.items(), key=lambda kv: int(kv[0]))
+    }
+    return {
+        "id": paper_id,
+        "pdf": f"ingest/{paper_id}.pdf",
+        "text_dir": f"ingest/text/{paper_id}/",
+        "page_count": page_count,
+        "title": meta.get("title", ""),
+        "doi": doi,
+        "venue": detect_venue(first),
+        "pdf_metadata": meta,
+        "layout_pages": dict(layouts),
+        "cleaning": stats,
+        "figures": figures,
+        "large_images": large_images,
+        "sha256": hashlib.sha256(pdf_dest.read_bytes()).hexdigest(),
+        "warnings": warnings,
+    }
+
+
+def parse_paper_arg(s: str) -> tuple[str | None, str]:
+    m = re.match(r"^([A-Za-z0-9_-]+):(?!//)(.+)$", s)
+    if m and not re.match(r"^[A-Za-z]:\\", s):
+        return m.group(1), m.group(2)
+    return None, s
+
+
+def ingest_papers(paper_args: list[str], ingest_dir: Path) -> list[dict]:
+    ingest_dir.mkdir(parents=True, exist_ok=True)
+    papers, seen = [], set()
+    for i, arg in enumerate(paper_args):
+        pid, path = parse_paper_arg(arg)
+        pid = pid or ("main" if i == 0 else f"supp-{i}")
+        src = Path(path).expanduser()
+        if not src.is_file() or src.read_bytes()[:5] != b"%PDF-":
+            raise ValueError(f"not a PDF: {path}")
+        if pid in seen:
+            raise ValueError(f"duplicate paper id: {pid}")
+        seen.add(pid)
+        entry = extract_paper(src, pid, ingest_dir)
+        papers.append(entry)
+        figs = ", ".join(f"Fig {n}→p{v['caption_page']}" for n, v in entry["figures"].items())
+        print(f"[paper] {pid}: {entry['page_count']} pages {entry['layout_pages']}; "
+              f"doi={entry['doi'] or '?'}; venue={entry['venue'] or '?'}")
+        print(f"        cleaned {entry['cleaning']['boilerplate_lines']} header/footer lines, "
+              f"line numbers on {entry['cleaning']['line_number_pages']} pages")
+        print(f"        figure captions: {figs or 'none found'}")
+        for w in entry["warnings"]:
+            print(f"        [warn] {w}")
+    return papers
+
+
+# =============================================================================
+# Repo
+# =============================================================================
+
+SKIP_DIRS = {".git", "__pycache__", "node_modules", ".ipynb_checkpoints", "build", "dist"}
+
+
+def gh_get(path: str) -> dict:
     req = urllib.request.Request(
-        url,
+        GITHUB_API + path,
         headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
     )
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
+    if os.environ.get("GITHUB_TOKEN"):
+        req.add_header("Authorization", f"Bearer {os.environ['GITHUB_TOKEN']}")
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read())
 
 
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-# =============================================================================
-# Repo mode
-# =============================================================================
-
-
-def parse_repo_identifier(s: str) -> tuple[str, str]:
+def parse_repo(s: str) -> tuple[str, str]:
     s = s.strip().rstrip("/")
-    if s.startswith(("http://", "https://")):
-        m = re.match(
-            r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?$", s
-        )
-        if not m:
-            raise ValueError(f"cannot parse GitHub URL: {s}")
-        return m.group(1), m.group(2)
-    if s.count("/") == 1:
-        owner, name = s.split("/")
-        return owner, name.removesuffix(".git")
-    raise ValueError(f"expected 'owner/name' or github.com URL, got: {s}")
+    m = re.match(r"^(?:https?://(?:www\.)?github\.com/)?([^/\s]+)/([^/\s]+?)(?:\.git)?$", s)
+    if not m:
+        raise ValueError(f"expected owner/name or a github.com URL, got: {s}")
+    return m.group(1), m.group(2)
 
 
-def clone_or_refresh_repo(
-    owner: str, name: str, default_branch: str, cache_dir: Path
-) -> Path:
-    repo_cache = cache_dir / "repos" / f"{owner}_{name}"
-    if repo_cache.is_dir():
-        print(f"[repo] cache hit at {repo_cache}; refreshing")
+def clone_or_refresh(owner: str, name: str, branch: str) -> Path:
+    dest = CACHE_DIR / "repos" / f"{owner}_{name}"
+    if dest.is_dir():
         try:
-            subprocess.run(
-                ["git", "-C", str(repo_cache), "fetch", "origin"],
-                check=True, timeout=60, capture_output=True,
-            )
-            subprocess.run(
-                ["git", "-C", str(repo_cache), "reset", "--hard",
-                 f"origin/{default_branch}"],
-                check=True, timeout=10, capture_output=True,
-            )
-        except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
-            print(f"[warn] could not refresh ({type(e).__name__}); using cached version")
+            subprocess.run(["git", "-C", str(dest), "fetch", "origin"], check=True,
+                           timeout=60, capture_output=True)
+            subprocess.run(["git", "-C", str(dest), "reset", "--hard", f"origin/{branch}"],
+                           check=True, timeout=10, capture_output=True)
+        except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+            print("[warn] could not refresh cached clone; using it as is")
     else:
-        url = f"https://github.com/{owner}/{name}.git"
-        print(f"[repo] cloning {url} → {repo_cache}")
-        repo_cache.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "clone", url, str(repo_cache)],
-            check=True, timeout=300,
-        )
-    return repo_cache
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "clone", "--depth", "50",
+                        f"https://github.com/{owner}/{name}.git", str(dest)],
+                       check=True, timeout=300)
+    return dest
 
 
-SKIP_DIRS = {
-    "node_modules", "__pycache__", ".git", "dist", "build", "target",
-    ".venv", "venv", "vendor", ".idea", ".vscode", ".github",
-    ".mypy_cache", ".pytest_cache", "coverage", "htmlcov",
-}
-
-
-def make_repo_tree(repo_path: Path, max_entries: int = 400) -> str:
-    """2-level navigation listing. Full tree is available via repo_src/ symlink."""
+def repo_tree(root: Path, max_entries: int = 400) -> str:
     lines: list[str] = []
-    for root, dirs, files in os.walk(repo_path):
-        rel = Path(root).relative_to(repo_path)
-        depth = len(rel.parts)
-        if depth > 2:
+    for cur, dirs, files in os.walk(root):
+        rel = Path(cur).relative_to(root)
+        if len(rel.parts) > 2:
             dirs.clear()
             continue
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
-        if depth >= 1:
-            lines.append(f"[dir] {rel}/")
-        for f in sorted(files):
-            if f.startswith("."):
-                continue
-            rp = rel / f
-            try:
-                size = (repo_path / rp).stat().st_size
-                lines.append(f"      {rp}  ({size} bytes)")
-            except OSError:
-                lines.append(f"      {rp}")
-            if len(lines) >= max_entries:
-                lines.append(f"... truncated at {max_entries} entries")
-                return "\n".join(lines) + "\n"
-    return "\n".join(lines) + "\n" if lines else "(empty)\n"
+        if rel.parts:
+            lines.append(f"{rel}/")
+        lines += [f"  {rel / f}" for f in sorted(files) if not f.startswith(".")]
+        if len(lines) >= max_entries:
+            return "\n".join(lines[:max_entries]) + "\n... (truncated)\n"
+    return "\n".join(lines) + "\n"
 
 
-def find_paper_refs(readme: str) -> list[dict]:
-    refs = []
-    for m in re.finditer(r"arXiv:\s*(\d{4}\.\d{4,5})", readme, re.IGNORECASE):
-        refs.append({"kind": "arxiv", "id": m.group(1)})
-    for m in re.finditer(
-        r"(?:https?://doi\.org/|doi:\s*)(10\.\d{4,9}/[-._;/:a-zA-Z0-9]+)",
-        readme, re.IGNORECASE,
-    ):
-        doi = m.group(1).rstrip(").,;]")
-        refs.append({"kind": "doi", "id": doi})
-    for m in re.finditer(
-        r"https?://(?:www\.)?biorxiv\.org/content/([^\s)]+)", readme,
-    ):
-        refs.append({
-            "kind": "biorxiv",
-            "url": "https://www.biorxiv.org/content/" + m.group(1),
-        })
-    seen, dedup = set(), []
-    for r in refs:
-        key = (r["kind"], r.get("id") or r.get("url"))
-        if key in seen:
-            continue
-        seen.add(key)
-        dedup.append(r)
-    return dedup
+def ingest_repo(identifier: str, ingest_dir: Path, allow_large: bool) -> dict:
+    owner, name = parse_repo(identifier)
+    meta = gh_get(f"/repos/{owner}/{name}")
+    if meta.get("size", 0) > 1_000_000 and not allow_large:
+        raise ValueError("repo is larger than 1 GB; pass --allow-large to proceed")
+    branch = meta.get("default_branch") or "main"
+    clone = clone_or_refresh(owner, name, branch)
+    ingest_dir.mkdir(parents=True, exist_ok=True)
 
+    link = ingest_dir / "repo_src"
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    link.symlink_to(clone.resolve())
+    (ingest_dir / "repo_tree.txt").write_text(repo_tree(clone))
 
-def write_paper_refs(refs: list[dict], out_path: Path) -> None:
-    if not refs:
-        out_path.write_text("(no arXiv / DOI / bioRxiv references found in README)\n")
-        return
-    lines = ["# Paper references detected in README", ""]
-    for r in refs:
-        if r["kind"] == "arxiv":
-            lines.append(f"- arXiv: `{r['id']}` — https://arxiv.org/abs/{r['id']}")
-        elif r["kind"] == "doi":
-            lines.append(f"- DOI: `{r['id']}` — https://doi.org/{r['id']}")
-        elif r["kind"] == "biorxiv":
-            lines.append(f"- bioRxiv: {r['url']}")
-    out_path.write_text("\n".join(lines) + "\n")
-
-
-def ingest_repo(
-    identifier: str,
-    out_dir: Path,
-    token: str | None,
-    cache_dir: Path,
-    allow_large: bool = False,
-) -> None:
-    owner, name = parse_repo_identifier(identifier)
-    print(f"[ingest/repo] {owner}/{name}")
-
-    meta = gh_get(f"/repos/{owner}/{name}", token=token)
-    size_kb = meta.get("size", 0)
-    print(f"[repo] reported size: {size_kb} KB")
-    if size_kb > 1_000_000 and not allow_large:
-        raise ValueError(
-            f"repo is {size_kb / 1024:.0f} MB (> 1 GB). "
-            f"Pass --allow-large to proceed, or use a smaller repo."
-        )
-
-    default_branch = meta.get("default_branch") or "main"
-    repo_cache = clone_or_refresh_repo(owner, name, default_branch, cache_dir)
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    repo_json = {
-        "ingest_version": INGEST_VERSION,
+    notebooks = sorted(str(p.relative_to(clone)) for p in clone.rglob("*.ipynb")
+                       if not any(part in SKIP_DIRS for part in p.parts))
+    last = subprocess.run(["git", "-C", str(clone), "log", "-1", "--format=%ai %h %s"],
+                          capture_output=True, text=True).stdout.strip()
+    info = {
         "full_name": meta["full_name"],
         "url": meta["html_url"],
         "description": meta.get("description") or "",
         "language": meta.get("language") or "",
         "stars": meta.get("stargazers_count", 0),
-        "forks": meta.get("forks_count", 0),
         "license": (meta.get("license") or {}).get("spdx_id") or "",
-        "topics": meta.get("topics") or [],
-        "default_branch": default_branch,
-        "created_at": meta.get("created_at") or "",
-        "pushed_at": meta.get("pushed_at") or "",
-        "homepage": meta.get("homepage") or "",
-        "archived": meta.get("archived", False),
-        "open_issues": meta.get("open_issues_count", 0),
-        "size_kb": size_kb,
-        "local_clone": str(repo_cache),
+        "default_branch": branch,
+        "last_commit": last,
+        "local_clone": str(clone),
+        "notebooks": notebooks,
     }
-    (out_dir / "repo.json").write_text(
-        json.dumps(repo_json, indent=2, ensure_ascii=False)
-    )
-
-    link = out_dir / "repo_src"
-    if link.is_symlink() or link.exists():
-        link.unlink()
-    link.symlink_to(repo_cache.resolve())
-
-    (out_dir / "repo_tree.txt").write_text(make_repo_tree(repo_cache))
-
-    readme_path = repo_cache / "README.md"
-    if not readme_path.is_file():
-        for alt in ("README.rst", "README.txt", "README", "readme.md"):
-            cand = repo_cache / alt
-            if cand.is_file():
-                readme_path = cand
-                break
-    readme = (
-        readme_path.read_text(encoding="utf-8", errors="replace")
-        if readme_path.is_file()
-        else ""
-    )
-    refs = find_paper_refs(readme)
-    write_paper_refs(refs, out_dir / "paper_refs.md")
-
-    (out_dir / "questions-to-user.md").write_text(QUESTIONS_HEADER)
-
-    print(f"[ingest/repo] done → {out_dir}")
-    print(f"  repo.json           {repo_json['full_name']} "
-          f"({repo_json['stars']} stars, {repo_json['language']})")
-    print(f"  repo_src/           → {repo_cache} ({size_kb} KB)")
-    print(f"  repo_tree.txt       {len(make_repo_tree(repo_cache).splitlines())} entries")
-    print(f"  paper_refs.md       {len(refs)} reference(s)")
-
-
-# =============================================================================
-# Paper mode (N local PDFs)
-# =============================================================================
-
-
-_PAPER_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
-
-
-def parse_paper_arg(s: str) -> tuple[str | None, str]:
-    """Accept '[id:]<path>'. Return (id_or_None, path).
-
-    An explicit id is detected when the first ':' precedes the first '/'.
-    Bare paths (no leading id) return id=None.
-    """
-    if ":" not in s or s.startswith("/"):
-        return None, s
-    if len(s) >= 3 and s[1] == ":" and s[2] == "\\":  # Windows-style C:\path
-        return None, s
-    first_colon = s.index(":")
-    first_slash = s.find("/")
-    if first_slash == -1 or first_colon < first_slash:
-        return s[:first_colon], s[first_colon + 1:]
-    return None, s
-
-
-def validate_pdf(path_str: str) -> Path:
-    p = Path(path_str).expanduser()
-    if not p.is_file():
-        raise ValueError(f"PDF not found: {p}")
-    with open(p, "rb") as f:
-        if f.read(5) != b"%PDF-":
-            raise ValueError(f"not a PDF (bad magic bytes): {p}")
-    return p.resolve()
-
-
-def _extract_page_columns(page, narrow_threshold: float = 0.6) -> str:
-    """Reading-order text from a possibly multi-column PDF page.
-
-    Strategy: pymupdf returns paragraph-level text blocks with bounding boxes.
-    Classify each block as 'wide' (spans > narrow_threshold * page width;
-    typically titles, abstracts, full-width section headings), 'left' (narrow,
-    centered in left half) or 'right' (narrow, centered in right half).
-    Render order: wide blocks above the narrow region, then left column
-    top-to-bottom, then right column top-to-bottom, then wide blocks below.
-
-    This recovers correct narrative flow for 2-column journal layouts where
-    naive y-sorted extraction interleaves columns.
-    """
-    blocks = page.get_text("blocks")
-    text_blocks = [b for b in blocks if b[6] == 0 and b[4].strip()]
-    if not text_blocks:
-        return ""
-    page_width = page.rect.width
-    midpoint = page_width / 2
-    wide_thr = page_width * narrow_threshold
-    classified = []  # (kind, y0, text)
-    for x0, y0, x1, y1, text, *_ in text_blocks:
-        width = x1 - x0
-        center = (x0 + x1) / 2
-        if width > wide_thr:
-            kind = "wide"
-        elif center < midpoint:
-            kind = "left"
-        else:
-            kind = "right"
-        classified.append((kind, y0, text.strip()))
-    narrow = [c for c in classified if c[0] != "wide"]
-    if not narrow:
-        return "\n\n".join(c[2] for c in sorted(classified, key=lambda c: c[1]))
-    nmin = min(c[1] for c in narrow)
-    nmax = max(c[1] for c in narrow)
-    top_wide = sorted(
-        [c for c in classified if c[0] == "wide" and c[1] < nmin],
-        key=lambda c: c[1],
-    )
-    left = sorted([c for c in classified if c[0] == "left"], key=lambda c: c[1])
-    right = sorted([c for c in classified if c[0] == "right"], key=lambda c: c[1])
-    bot_wide = sorted(
-        [c for c in classified if c[0] == "wide" and c[1] > nmax],
-        key=lambda c: c[1],
-    )
-    return "\n\n".join(c[2] for c in (top_wide + left + right + bot_wide))
-
-
-def _doi_from_subject(subject: str) -> str:
-    """Extract DOI from the PDF Subject field (often 'Journal Name, doi:10.xxxx/...')."""
-    if not subject:
-        return ""
-    m = re.search(r"\b10\.\d{4,9}/[-._;/:a-zA-Z0-9]+", subject)
-    return m.group(0) if m else ""
-
-
-def extract_paper(src_path: Path, paper_id: str, raw_dir: Path) -> dict:
-    """Copy PDF into raw/, dump per-page column-aware text via pymupdf, return manifest entry."""
-    import fitz  # pymupdf
-
-    pdf_dest = raw_dir / f"{paper_id}.pdf"
-    shutil.copy(src_path, pdf_dest)
-
-    pages_dir = raw_dir / paper_id
-    pages_dir.mkdir(parents=True, exist_ok=True)
-
-    doc = fitz.open(str(pdf_dest))
-    try:
-        page_count = doc.page_count
-        text_pages_with_content = 0
-        for i in range(page_count):
-            text = _extract_page_columns(doc[i])
-            (pages_dir / f"page-{i + 1:03d}.txt").write_text(text, encoding="utf-8")
-            if text.strip():
-                text_pages_with_content += 1
-        meta = doc.metadata or {}
-    finally:
-        doc.close()
-
-    pdf_metadata = {k: v.strip() for k, v in meta.items() if v and v.strip()}
-    if "doi" not in pdf_metadata and "subject" in pdf_metadata:
-        doi = _doi_from_subject(pdf_metadata["subject"])
-        if doi:
-            pdf_metadata["doi"] = doi
-
-    return {
-        "id": paper_id,
-        "pdf": f"raw/{paper_id}.pdf",
-        "pages_dir": f"raw/{paper_id}/",
-        "page_count": page_count,
-        "text_pages_with_content": text_pages_with_content,
-        "size_bytes": pdf_dest.stat().st_size,
-        "sha256": sha256_file(pdf_dest),
-        "pdf_metadata": pdf_metadata,
-    }
-
-
-def ingest_paper(paper_args: list[str], out_dir: Path) -> None:
-    if not paper_args:
-        raise ValueError("at least one PDF path required")
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    raw_dir = out_dir / "raw"
-    raw_dir.mkdir(exist_ok=True)
-
-    parsed: list[tuple[str, Path]] = []
-    auto_count = 0
-    seen_ids: set[str] = set()
-    for arg in paper_args:
-        explicit_id, path_str = parse_paper_arg(arg)
-        src = validate_pdf(path_str)
-        if explicit_id is not None:
-            paper_id = explicit_id
-        elif len(paper_args) == 1:
-            paper_id = "main"
-        else:
-            auto_count += 1
-            paper_id = f"paper-{auto_count}"
-        if not _PAPER_ID_RE.match(paper_id):
-            raise ValueError(
-                f"invalid paper id {paper_id!r}: must match [a-zA-Z0-9_-]+"
-            )
-        if paper_id in seen_ids:
-            raise ValueError(f"duplicate paper id: {paper_id!r}")
-        seen_ids.add(paper_id)
-        parsed.append((paper_id, src))
-
-    papers = []
-    for paper_id, src in parsed:
-        print(f"[ingest/paper] {paper_id}: {src}")
-        entry = extract_paper(src, paper_id, raw_dir)
-        papers.append(entry)
-        print(
-            f"  → {entry['page_count']} pages "
-            f"({entry['text_pages_with_content']} with text), "
-            f"{entry['size_bytes']:,} bytes"
-        )
-        if entry["pdf_metadata"]:
-            keys = list(entry["pdf_metadata"].keys())
-            print(f"  → PDF metadata keys: {keys}")
-
-    manifest = {"ingest_version": INGEST_VERSION, "papers": papers}
-    (out_dir / "paper.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False)
-    )
-    (out_dir / "questions-to-user.md").write_text(QUESTIONS_HEADER)
-
-    print(f"[ingest/paper] done → {out_dir}")
-
-
-# =============================================================================
-# Combined mode
-# =============================================================================
-
-
-def ingest_combined(
-    repo_id: str,
-    paper_args: list[str],
-    out_dir: Path,
-    token: str | None,
-    cache_dir: Path,
-    allow_large: bool = False,
-) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    print("=" * 60)
-    print("[ingest/combined] step 1/2 — repo")
-    print("=" * 60)
-    ingest_repo(repo_id, out_dir, token, cache_dir, allow_large=allow_large)
-    print()
-    print("=" * 60)
-    print(f"[ingest/combined] step 2/2 — paper(s) (n={len(paper_args)})")
-    print("=" * 60)
-    ingest_paper(paper_args, out_dir)
-
-    (out_dir / "combined.json").write_text(
-        json.dumps(
-            {
-                "ingest_version": INGEST_VERSION,
-                "mode": "combined",
-                "note": (
-                    "Cross-link detection between paper(s) and repo is now performed "
-                    "by the [2.5] cross-ref prompt by reading both ingest trees "
-                    "directly. No automatic signals are pre-computed."
-                ),
-            },
-            indent=2,
-        )
-    )
-    print(f"\n[ingest/combined] done → {out_dir}")
+    print(f"[repo]  {info['full_name']} ({info['stars']} stars, {info['language']}); "
+          f"{len(notebooks)} notebook(s); last commit {last}")
+    return info
 
 
 # =============================================================================
@@ -509,87 +336,41 @@ def ingest_combined(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description=(
-            "Ingest a repo / paper(s) / both into a structured work tree for "
-            "wechat-science-post."
-        )
-    )
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="mode", required=True)
-
-    ap_repo = sub.add_parser("repo", help="ingest a GitHub repository (git clone)")
-    ap_repo.add_argument("identifier", help="owner/name or full GitHub URL")
-    ap_repo.add_argument(
-        "--out", required=True,
-        help="output directory, e.g. work/<task_name>_<ts>/ingest",
-    )
-    ap_repo.add_argument(
-        "--cache-dir", default=None,
-        help="override default ~/.cache/wechat-science-post/",
-    )
-    ap_repo.add_argument(
-        "--allow-large", action="store_true",
-        help="allow repo > 1 GB",
-    )
-
-    ap_paper = sub.add_parser("paper", help="ingest one or more local PDFs")
-    ap_paper.add_argument(
-        "papers", nargs="+",
-        help="one or more '[id:]<path-to-pdf>' specs (id is alnum/_/-)",
-    )
-    ap_paper.add_argument(
-        "--out", required=True,
-        help="output directory, e.g. work/<task_name>_<ts>/ingest",
-    )
-
-    ap_comb = sub.add_parser(
-        "combined", help="repo + paper(s) into one tree (paper-primary article)"
-    )
-    ap_comb.add_argument("--repo", required=True, help="owner/name or GitHub URL")
-    ap_comb.add_argument(
-        "--paper", required=True, action="append",
-        help="'[id:]<path-to-pdf>'; repeat the flag for multiple PDFs",
-    )
-    ap_comb.add_argument("--out", required=True)
-    ap_comb.add_argument("--cache-dir", default=None)
-    ap_comb.add_argument("--allow-large", action="store_true")
-
+    p = sub.add_parser("paper")
+    p.add_argument("pdfs", nargs="+")
+    r = sub.add_parser("repo")
+    r.add_argument("repo")
+    c = sub.add_parser("combined")
+    c.add_argument("--repo", required=True)
+    c.add_argument("--paper", action="append", required=True)
+    for sp in (p, r, c):
+        sp.add_argument("--work", required=True, help="work/<slug>")
+    for sp in (r, c):
+        sp.add_argument("--allow-large", action="store_true")
     args = ap.parse_args()
-    out_dir = Path(args.out)
-    cache_dir = (
-        Path(args.cache_dir)
-        if getattr(args, "cache_dir", None)
-        else CACHE_DIR_DEFAULT
-    )
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    token = os.environ.get("GITHUB_TOKEN") or None
 
+    work = Path(args.work)
+    ingest_dir = work / "ingest"
+    manifest: dict = {"mode": args.mode, "version": VERSION}
     try:
-        if args.mode == "repo":
-            ingest_repo(
-                args.identifier, out_dir, token, cache_dir,
-                allow_large=args.allow_large,
-            )
-        elif args.mode == "paper":
-            ingest_paper(args.papers, out_dir)
+        if args.mode in ("repo", "combined"):
+            manifest["repo"] = ingest_repo(args.repo, ingest_dir, args.allow_large)
+        if args.mode == "paper":
+            manifest["papers"] = ingest_papers(args.pdfs, ingest_dir)
         elif args.mode == "combined":
-            ingest_combined(
-                args.repo, args.paper, out_dir, token, cache_dir,
-                allow_large=args.allow_large,
-            )
+            manifest["papers"] = ingest_papers(args.paper, ingest_dir)
     except urllib.error.HTTPError as e:
-        print(f"[error] HTTP {e.code}: {e.reason}", file=sys.stderr)
-        if e.code == 403:
-            print("       hint: set GITHUB_TOKEN to raise the rate limit",
-                  file=sys.stderr)
+        hint = " (set GITHUB_TOKEN to raise the rate limit)" if e.code == 403 else ""
+        print(f"[error] GitHub HTTP {e.code}: {e.reason}{hint}", file=sys.stderr)
         return 1
-    except urllib.error.URLError as e:
-        print(f"[error] network: {e.reason}", file=sys.stderr)
-        return 1
-    except (ValueError, subprocess.CalledProcessError) as e:
+    except (urllib.error.URLError, subprocess.CalledProcessError, ValueError) as e:
         print(f"[error] {e}", file=sys.stderr)
         return 1
 
+    (ingest_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+    print(f"[ok]    mode={args.mode} → {ingest_dir / 'manifest.json'}")
     return 0
 
 
